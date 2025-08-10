@@ -11,6 +11,16 @@ type Props = {
   onStartOcr: (docId: number, statusEndpoint: string) => void;
 };
 
+interface OcrStatusResponse {
+  status: string;
+  extractedText?: string;
+}
+
+interface LlmResponse {
+  explanation?: string;
+  // Add other possible response properties here
+}
+
 export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
   const [replacingId, setReplacingId] = useState<number | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -20,6 +30,12 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
   const [ocrText, setOcrText] = useState<string>("");
   const [statuses, setStatuses] = useState<Map<number, OcrStatus>>(new Map());
   const [activeOcrIds, setActiveOcrIds] = useState<number[]>([]);
+  const [llmSessions, setLlmSessions] = useState<Map<number, number | null>>(new Map());
+
+  function isLlmSessionInitialized(docId: number): boolean {
+    const llmId = llmSessions.get(docId);
+    return llmId !== null && llmId !== undefined;
+}
 
   function bytes(n: number) {
     if (n < 1024) return `${n} B`;
@@ -85,6 +101,108 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
     }
   }
 
+  async function handleRunLlm(docId: number) {
+  try {
+    const token = getToken();
+
+    // Fetch the document to get the extracted text
+    const res = await fetch(`/documents/${docId}/ocr/status`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok && res.status !== 304) throw new Error('Failed to fetch OCR status');
+    const data: OcrStatusResponse = await res.json();
+
+    if (data.extractedText) {
+      // First check if there is already an LLM session for the document using the GET request
+      const llmSessionRes = await fetch(`/documents/${docId}/llm/session`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      if (llmSessionRes.ok) {
+        // If session exists, open the modal with chat history
+        const chatHistory = await llmSessionRes.json();
+        console.log('Existing session found, opening modal with chat history:', chatHistory);
+        openModalWithChatHistory(docId, chatHistory); // Pass the session data to the modal
+      } else if (llmSessionRes.status === 404) {
+        // If no session found, create a new LLM session with OCR text as the first question
+        const llmResponse = await apiFetch(`/documents/${docId}/llm/initialize`, {
+          method: 'POST',
+          body: JSON.stringify({ text: data.extractedText }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        }) as { llmSession: { id: number } };
+
+        if (llmResponse.llmSession) {
+          // Update the session state to track the new LLM session ID
+          setLlmSessions((prev) => new Map(prev).set(docId, llmResponse.llmSession.id));
+          alert('LLM session initialized');
+          openModalWithChatHistory(docId, { questions: [data.extractedText], answers: ['Loading...'] });  // Open the modal after initializing the session
+        } else {
+          alert('Failed to initialize LLM session');
+        }
+      } else {
+        // Handle any errors from the GET request
+        throw new Error('Failed to fetch LLM session');
+      }
+    } else {
+      alert('OCR is still processing or failed.');
+    }
+  } catch (err: unknown) {
+    if (isError(err)) {
+      alert(`Failure: ${err.message}`);
+    } else {
+      alert('An unknown error occurred');
+    }
+  }
+}
+
+
+// Helper function to get the LLM session ID
+function getLlmIdForDoc(docId: number): number | null {
+  const llmId = llmSessions.get(docId);
+  console.log(`Retrieved LLM ID for docId ${docId}:`, llmId); // Debugging log
+  return llmId || null;  // Return the LLM session ID or null if not found
+}
+
+  // Type guard to check if the error is an instance of Error
+  function isError(err: unknown): err is Error {
+  return err instanceof Error;
+    }
+
+
+  async function openModalWithChatHistory(docId: number, chatHistory: { questions: string[], answers: string[] }) {
+  try {
+    if (!chatHistory || chatHistory.questions.length === 0) {
+      alert('No chat history found');
+      return;
+    }
+
+    // Convert formatted chat history to a string (you could use plain text or HTML)
+    const formattedChatHistory = chatHistory.questions.map((question: string, index: number) => {
+      return `
+        <div><strong>Question:</strong> ${question}</div>
+        <div><strong>Answer:</strong> ${chatHistory.answers[index]}</div>
+        <hr />
+      `;
+    }).join('');  // Join all individual strings into one large string
+
+    // Use the string representation of the chat history for the OCR text
+    setOcrText(formattedChatHistory);  // Store formatted chat history as a string
+
+    openModal('', 'LLM Chat History');  // Open modal after updating state
+  } catch (err: unknown) {
+    if (isError(err)) {
+      alert(`Failed to load chat history: ${err.message}`);
+    } else {
+      alert('An unknown error occurred');
+    }
+  }
+}
+
+  
+
   async function fetchFileBlob(docId: number): Promise<Blob> {
     const token = getToken();
     const res = await fetch(`/documents/${docId}/file`, {
@@ -111,10 +229,11 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
-      if (!res.ok) throw new Error('Failed to fetch OCR status');
+      if (!res.ok && res.status !== 304) throw new Error('Failed to fetch OCR status');
       const data = await res.json();
 
-      if (data.status === "completed") {
+      //if (data.status === "completed") {
+      if (data) {
         setOcrText(data.extractedText); 
         openModal("", doc.originalName || `document-${doc.id}`);
       } else {
@@ -284,8 +403,14 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
                 <td className="py-2 px-4">
                   <div className="flex items-center gap-3">
                     <button
-                      onClick={() => handlePreview(d)}
+                      onClick={() => handleDownload(d)}
                       className="bg-gray-100 text-xs text-gray-600 rounded px-2 py-1 hover:bg-gray-200"
+                    >
+                      Download File
+                    </button>
+                    <button
+                      onClick={() => handlePreview(d)}
+                      className="bg-purple-200 text-xs text-gray-600 rounded px-2 py-1 hover:bg-purple-300"
                     >
                       Preview File
                     </button>
@@ -298,12 +423,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
                       Preview OCR
                     </button>
 
-                    <button
-                      onClick={() => handleDownload(d)}
-                      className="bg-gray-100 text-xs text-gray-600 rounded px-2 py-1 hover:bg-gray-200"
-                    >
-                      Download
-                    </button>
+                    
 
                     <button
                       onClick={() => runOcr(d.id)}
@@ -311,6 +431,14 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
                     >
                       Run OCR
                     </button>
+
+                    <button
+                        onClick={() => handleRunLlm(d.id)}
+                        disabled={!d.extractedText}
+                        className={`bg-blue-600 text-xs text-white rounded px-2 py-1 hover:bg-blue-700 ${!d.extractedText ? 'cursor-not-allowed opacity-50' : ''}`}
+                        >
+                        Run LLM
+                        </button>
 
                     <button
                       onClick={() => deleteFile(d.id)}

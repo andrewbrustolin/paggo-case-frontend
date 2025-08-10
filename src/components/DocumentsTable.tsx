@@ -613,7 +613,7 @@ async function getLlmIdForDoc(docId: number): Promise<number | null> {
 
         {modalType === 'llm' && (
           <div className="space-y-4">
-            <h4 className="font-bold text-lg text-gray-800">LLM Chat History</h4>
+            {/* <h4 className="font-bold text-lg text-gray-800">LLM Chat History</h4> */}
             
             {/* OCR Generated Text (with prompt) */}
             {llmQuestions.length > 0 && (

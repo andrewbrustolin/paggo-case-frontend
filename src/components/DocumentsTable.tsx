@@ -4,6 +4,7 @@ import { DocumentRow, OcrStatus, apiFetch } from "@/lib/api";
 import { getToken } from "@/lib/api";
 import { useEffect, useState } from "react";
 import OcrStatusPanel from "./OcrStatusPanel";
+import { GeneratePdfButton } from './GeneratePdfButton';
 
 type Props = {
   docs: DocumentRow[];
@@ -31,19 +32,19 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
   const [statuses, setStatuses] = useState<Map<number, OcrStatus>>(new Map());
   const [activeOcrIds, setActiveOcrIds] = useState<number[]>([]);
   const [llmSessions, setLlmSessions] = useState<Map<number, number | null>>(new Map());
-  const [userQuestion, setUserQuestion] = useState<string>(""); // Track user input
-  const [llmAnswers, setLlmAnswers] = useState<string[]>([]); // Track LLM answers
-  const [llmQuestions, setLlmQuestions] = useState<string[]>([]); // Track LLM questions
+  const [userQuestion, setUserQuestion] = useState<string>(""); 
+  const [llmAnswers, setLlmAnswers] = useState<string[]>([]); 
+  const [llmQuestions, setLlmQuestions] = useState<string[]>([]); 
   const [currentDocId, setCurrentDocId] = useState<number | null>(null);
   type ModalType = 'file' | 'ocr' | 'llm';
   const [modalType, setModalType] = useState<ModalType>('file');
   const [isLlmLoading, setIsLlmLoading] = useState<number | null>(null);
   const [isAsking, setIsAsking] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<number | null>(null);
+  
+  
 
-  function isLlmSessionInitialized(docId: number): boolean {
-    const llmId = llmSessions.get(docId);
-    return llmId !== null && llmId !== undefined;
-}
+  
 
   function bytes(n: number) {
     if (n < 1024) return `${n} B`;
@@ -70,25 +71,9 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
     }
   }
 
-  async function handleStartOcr(docId: number, endpoint: string) {
-    setStatuses((prev) => prev.set(docId, { status: 'queued', progress: 0 }));
-    setActiveOcrIds(prev => [...prev, docId]);
-    await onStartOcr(docId, endpoint);
-  }
+  
 
-  async function replaceFile(docId: number, file: File) {
-    const form = new FormData();
-    form.append("file", file);
-    try {
-      setReplacingId(docId);
-      await apiFetch(`/documents/${docId}/file`, { method: "PUT", body: form });
-      await onRefresh();
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setReplacingId(null);
-    }
-  }
+  
 
   async function runOcr(docId: number) {
     try {
@@ -170,7 +155,6 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
     const data: OcrStatusResponse = await res.json();
 
     if (data.extractedText) {
-      // Add context prompt to the OCR text
       const prompt = "Please give context to the following:\n\n" + data.extractedText;
       
       const llmSessionRes = await fetch(`/documents/${docId}/llm/session`, {
@@ -186,7 +170,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
       } else if (llmSessionRes.status === 404) {
         const llmResponse = await apiFetch(`/documents/${docId}/llm/initialize`, {
           method: 'POST',
-          body: JSON.stringify({ text: prompt }), // Use the prompted text
+          body: JSON.stringify({ text: prompt }),
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -203,7 +187,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
           });
 
           // Poll for the actual response
-          pollForContextualization(docId, llmResponse.llmSession.id);
+          await pollForContextualization(docId, llmResponse.llmSession.id);
         }
       }
     } else {
@@ -440,6 +424,8 @@ async function getLlmIdForDoc(docId: number): Promise<number | null> {
     };
   }, [previewUrl]);
 
+  
+
   return (
     <section className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
       <div className="overflow-x-auto">
@@ -569,6 +555,16 @@ async function getLlmIdForDoc(docId: number): Promise<number | null> {
                         'Run LLM'
                       )}
                     </button>
+
+                    <GeneratePdfButton 
+                      docId={d.id}
+                      hasExtractedText={!!d.extractedText}
+                      onError={(err) => alert(`Failed to generate PDF: ${err.message}`)}
+                      onLlmRun={() => {
+                        
+                      }}
+                    />
+
 
                     <button
                       onClick={() => deleteFile(d.id)}

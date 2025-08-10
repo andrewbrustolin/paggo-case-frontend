@@ -37,6 +37,8 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
   const [currentDocId, setCurrentDocId] = useState<number | null>(null);
   type ModalType = 'file' | 'ocr' | 'llm';
   const [modalType, setModalType] = useState<ModalType>('file');
+  const [isLlmLoading, setIsLlmLoading] = useState<number | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
 
   function isLlmSessionInitialized(docId: number): boolean {
     const llmId = llmSessions.get(docId);
@@ -116,6 +118,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
     }
 
     try {
+      setIsAsking(true);
       const llmId = await getLlmIdForDoc(currentDocId);
       
       if (!llmId) {
@@ -134,7 +137,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
       });
 
       if (!res.ok) {
-        const errorData = await res.json(); // Try to get error details
+        const errorData = await res.json();
         alert(`Failed to send question: ${errorData.message || res.statusText}`);
         return;
       }
@@ -148,11 +151,14 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
     } catch (err) {
       console.error("LLM query failed:", err);
       alert(`LLM query failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
+    } finally {
+    setIsAsking(false); 
+  }
 };
 
   async function handleRunLlm(docId: number) {
   try {
+    setIsLlmLoading(docId);
     setCurrentDocId(docId);
     const token = getToken();
     
@@ -208,7 +214,9 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
       alert(`Failure: ${err.message}`);
     } else {
       alert('An unknown error occurred');
-    }
+    } 
+  } finally {
+    setIsLlmLoading(null); 
   }
 }
 
@@ -537,13 +545,29 @@ async function getLlmIdForDoc(docId: number): Promise<number | null> {
 
                     <button
                       onClick={() => {
-                        setCurrentDocId(d.id); 
-                        handleRunLlm(d.id);    
+                        setCurrentDocId(d.id);
+                        handleRunLlm(d.id);
                       }}
-                      disabled={!d.extractedText}
-                      className={`bg-blue-600 text-xs text-white rounded px-2 py-1 hover:bg-blue-700 ${!d.extractedText ? 'cursor-not-allowed opacity-50' : ''}`}
+                      disabled={!d.extractedText || isLlmLoading === d.id}
+                      className={`bg-blue-600 text-xs text-white rounded px-2 py-1 hover:bg-blue-700 ${
+                        !d.extractedText ? 'cursor-not-allowed opacity-50' : ''
+                      } ${
+                        isLlmLoading === d.id ? 'relative' : ''
+                      }`}
                     >
-                      Run LLM
+                      {isLlmLoading === d.id ? (
+                        <>
+                          <span className="invisible">Run LLM</span>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          </div>
+                        </>
+                      ) : (
+                        'Run LLM'
+                      )}
                     </button>
 
                     <button
@@ -669,13 +693,22 @@ async function getLlmIdForDoc(docId: number): Promise<number | null> {
               onChange={(e) => setUserQuestion(e.target.value)}
               className="flex-1 border p-2 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="Ask a question about this document..."
-              onKeyPress={(e) => e.key === 'Enter' && handleUserQuery()}
+              onKeyPress={(e) => e.key === 'Enter' && !isAsking && handleUserQuery()}
+              disabled={isAsking}
             />
             <button
               onClick={handleUserQuery}
-              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+              disabled={isAsking || !userQuestion.trim()}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors disabled:bg-blue-400 min-w-[80px] flex justify-center items-center"
             >
-              Ask
+              {isAsking ? (
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                'Ask'
+              )}
             </button>
           </div>
         </div>

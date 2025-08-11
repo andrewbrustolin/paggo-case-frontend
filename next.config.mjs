@@ -11,8 +11,9 @@ const nextConfig = {
       { source: '/auth/:path*', destination: `${backend}/auth/:path*` },
       // Documents & OCR endpoints
       { source: '/documents/:path*', destination: `${backend}/documents/:path*` },
-      
-      //{ source: '/uploads/:path*', destination: `${backend}/uploads/:path*` },
+
+      { source: '/users', destination: `${backend}/users` },
+
     ];
   },
 };

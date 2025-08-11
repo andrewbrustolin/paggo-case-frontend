@@ -40,7 +40,7 @@ export function GeneratePdfButton({
       }
 
       // Generate PDF
-      const response = await fetch(`/documents/${docId}/generate-pdf`, {
+      const response = await fetch(`/documents/${docId}/pdf/generate`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 

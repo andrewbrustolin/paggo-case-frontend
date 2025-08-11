@@ -5,7 +5,7 @@ const nextConfig = {
     // Where your Nest API runs in dev or prod
     const backend =
     process.env.NEXT_PUBLIC_BACKEND_ORIGIN ||
-    process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3000'
+    process.env.NEXT_PUBLIC_API_BASE
     return [
       // Auth endpoints
       { source: '/auth/:path*', destination: `${backend}/auth/:path*` },

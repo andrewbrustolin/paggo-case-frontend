@@ -2,7 +2,7 @@
 
 const nextConfig = {
   async rewrites() {
-    // Where your Nest API runs in dev or prod
+    
     const backend =
     process.env.NEXT_PUBLIC_BACKEND_ORIGIN ||
     process.env.NEXT_PUBLIC_API_BASE

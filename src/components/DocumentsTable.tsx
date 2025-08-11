@@ -23,7 +23,6 @@ interface LlmResponse {
 }
 
 export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
-  const [replacingId, setReplacingId] = useState<number | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -40,7 +39,8 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
   const [modalType, setModalType] = useState<ModalType>('file');
   const [isLlmLoading, setIsLlmLoading] = useState<number | null>(null);
   const [isAsking, setIsAsking] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState<number | null>(null);
+  const [openAiApiKey, setOpenAiApiKey] = useState<string>("");
+  const [showApiKeyInput, setShowApiKeyInput] = useState<boolean>(false);
   
   
 
@@ -117,6 +117,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          ...(openAiApiKey && { 'X-OpenAI-API-Key': openAiApiKey })
         },
         body: JSON.stringify({ text: userQuestion }),
       });
@@ -174,6 +175,7 @@ export default function DocumentsTable({ docs, onRefresh, onStartOcr }: Props) {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
+            ...(openAiApiKey && { 'X-OpenAI-API-Key': openAiApiKey })
           },
         }) as { llmSession: { id: number } };
 
@@ -429,7 +431,45 @@ async function getLlmIdForDoc(docId: number): Promise<number | null> {
   return (
     <section className="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
       <div className="overflow-x-auto">
-        <div className="flex justify-between mb-4">
+
+        <div className="mb-12 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="font-medium text-gray-700">OpenAI Settings</h3>
+          <button
+            onClick={() => setShowApiKeyInput(!showApiKeyInput)}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            {showApiKeyInput ? 'Hide' : 'Customize API Key'}
+          </button>
+        </div>
+        
+        {showApiKeyInput && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 pt-2">
+              OpenAI API Key
+            </label>
+            <div className="flex gap-2 p-2">
+              <input
+                type="password"
+                value={openAiApiKey}
+                onChange={(e) => setOpenAiApiKey(e.target.value)}
+                className="flex-1 border p-3 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                placeholder="Enter your OpenAI API key"
+              />
+              <button
+                onClick={() => setOpenAiApiKey("")}
+                className="bg-gray-200 text-gray-700 px-3 py-2 rounded hover:bg-gray-300 text-sm"
+              >
+                Clear
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Your key will be used for this session only and won't be stored.
+            </p>
+          </div>
+        )}
+      </div>
+        <div className="flex justify-between mb-4 pt-10">
           <button
             onClick={toggleSelectAll}
             className="bg-gray-100 text-xs text-gray-600 rounded px-4 py-2 hover:bg-gray-200"

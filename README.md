@@ -1,3 +1,5 @@
+<b>INSTRUCTIONS TO RUN THE PROJECT IN DEVELOPMENT MODE</b>
+
 - instal node on your machine
 
 - clone the project:
